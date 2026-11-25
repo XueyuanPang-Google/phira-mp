@@ -1,0 +1,107 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
+  BIN: phira-mp-server
+  TARGET: x86_64-unknown-linux-musl
+
+jobs:
+  build:
+    name: build (${{ github.ref_name }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install musl toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools pkg-config file
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: musl-${{ env.TARGET }}
+
+      - name: cargo build (static musl)
+        run: cargo build --release -p phira-mp-server --target ${{ env.TARGET }}
+
+      - name: Package artifacts
+        id: pkg
+        run: |
+          set -euo pipefail
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          VERSION="0.1.0~git${SHORT_SHA}"
+          mkdir -p dist
+          cp "target/${{ env.TARGET }}/release/${{ env.BIN }}" "dist/${{ env.BIN }}"
+          strip "dist/${{ env.BIN }}" || true
+          file "dist/${{ env.BIN }}"
+          tar -czf "dist/${{ env.BIN }}-x86_64-linux-musl.tar.gz" -C dist "${{ env.BIN }}"
+          bash packaging/make-deb.sh "dist/${{ env.BIN }}" "$VERSION" "dist"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          ls -lh dist
+
+      - name: Build docker image
+        run: |
+          set -euo pipefail
+          cp "dist/${{ env.BIN }}" docker/phira-mp-server
+          docker build \
+            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            -t "ghcr.io/${{ github.repository }}:latest" \
+            -t "ghcr.io/${{ github.repository }}:build-${{ github.run_number }}" \
+            -t "ghcr.io/${{ github.repository }}:sha-${GITHUB_SHA::7}" \
+            docker
+
+      - name: Push docker image to GHCR
+        run: |
+          set -euo pipefail
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker push --all-tags "ghcr.io/${{ github.repository }}"
+
+      - name: Sanity check binary
+        run: |
+          set -euo pipefail
+          chmod +x dist/${{ env.BIN }}
+          set +e
+          ./dist/${{ env.BIN }} --help > help.txt 2>&1
+          rc=$?
+          set -e
+          cat help.txt
+          [ "$rc" = "0" ] || { echo "binary failed to start (rc=$rc)"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phira-mp-server-x86_64-linux-musl
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+          if-no-files-found: error
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: build-${{ github.run_number }} (${{ steps.pkg.outputs.version }})
+          body: |
+            Automated build of `${{ env.BIN }}` at `${{ github.sha }}`.
+
+            * `phira-mp-server-x86_64-linux-musl.tar.gz` — static musl binary
+            * `phira-mp_*_amd64.deb` — Debian/Ubuntu package (systemd unit, port 32346)
+            * Docker image: `ghcr.io/${{ github.repository }}:latest`
+          files: |
+            dist/*.tar.gz
+            dist/*.deb

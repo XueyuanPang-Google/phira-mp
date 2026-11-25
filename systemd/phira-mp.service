@@ -1,0 +1,24 @@
+[Unit]
+Description=Phira Multiplayer Server (phira-mp)
+Documentation=https://github.com/TeamFlos/phira-mp
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=phira-mp
+Group=phira-mp
+WorkingDirectory=/var/lib/phira-mp
+Environment=RUST_LOG=info
+ExecStart=/usr/bin/phira-mp-server --port 32346
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/phira-mp
+
+[Install]
+WantedBy=multi-user.target

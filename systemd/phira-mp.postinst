@@ -1,0 +1,24 @@
+#!/bin/sh
+set -e
+
+if ! getent group phira-mp >/dev/null 2>&1; then
+    addgroup --system phira-mp >/dev/null 2>&1 || groupadd --system phira-mp
+fi
+if ! getent passwd phira-mp >/dev/null 2>&1; then
+    adduser --system --ingroup phira-mp --home /var/lib/phira-mp \
+        --no-create-home --disabled-login --gecos "Phira MP server" phira-mp >/dev/null 2>&1 \
+    || useradd --system --gid phira-mp --home-dir /var/lib/phira-mp \
+        --shell /usr/sbin/nologin --comment "Phira MP server" phira-mp
+fi
+
+mkdir -p /var/lib/phira-mp
+chown phira-mp:phira-mp /var/lib/phira-mp
+chmod 0750 /var/lib/phira-mp
+
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+    systemctl enable phira-mp.service || true
+    systemctl restart phira-mp.service || true
+fi
+
+exit 0
