@@ -15,6 +15,9 @@ env:
   CARGO_TERM_COLOR: always
   BIN: phira-mp-server
   TARGET: x86_64-unknown-linux-musl
+  # The deployment host reports a baseline CPU (QEMU kvm64, no AVX), so the
+  # binary must not contain any instruction newer than x86-64 baseline.
+  RUSTFLAGS: "-C target-cpu=x86-64"
 
 jobs:
   build:
@@ -89,6 +92,16 @@ jobs:
           set -e
           cat help.txt
           [ "$rc" = "0" ] || { echo "binary failed to start (rc=$rc)"; exit 1; }
+
+      - name: Reject non-baseline CPU instructions
+        run: |
+          set -euo pipefail
+          if objdump -d dist/${{ env.BIN }} | grep -qE '\b(vzeroupper|vmovdqa|vpxor|vpbroadcast|vpaddb|ymm[0-9]+)\b'; then
+            echo "ERROR: binary contains AVX/AVX2 instructions; it will SIGILL on baseline CPUs."
+            objdump -d dist/${{ env.BIN }} | grep -E '\b(vzeroupper|vmovdqa|vpxor|vpbroadcast)\b' | head -5
+            exit 1
+          fi
+          echo "OK: no AVX instructions found"
 
       - uses: actions/upload-artifact@v4
         with:
