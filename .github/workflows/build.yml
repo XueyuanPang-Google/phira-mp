@@ -82,6 +82,29 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker push --all-tags "${IMAGE}"
 
+      - name: Diagnose AVX site
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          BIN="target/${{ env.TARGET }}/release/${{ env.BIN }}"
+          objdump -d "$BIN" > /tmp/disasm.txt
+          echo "--- counts ---"
+          for i in vzeroupper vmovdqa vpxor vmovd; do printf '%s: ' "$i"; grep -c "$i" /tmp/disasm.txt; done
+          echo "--- enclosing symbols for vmovd %ecx,%xmm0 ---"
+          grep -n 'vmovd  %ecx,%xmm0' /tmp/disasm.txt | head -3 | cut -d: -f1 | while read -r ln; do
+            head -n "$ln" /tmp/disasm.txt | grep -E '^[0-9a-f]+ <' | tail -n 1
+          done
+          echo "--- enclosing symbols for vzeroupper (first 3) ---"
+          grep -n 'vzeroupper' /tmp/disasm.txt | head -3 | cut -d: -f1 | while read -r ln; do
+            head -n "$ln" /tmp/disasm.txt | grep -E '^[0-9a-f]+ <' | tail -n 1
+          done
+          echo "--- toolchain ---"
+          echo "RUSTFLAGS=$RUSTFLAGS"
+          rustc -vV
+          echo "--- ring / rustls deps ---"
+          cargo tree -p phira-mp-server -i ring 2>/dev/null | head -20 || true
+          cargo tree -p phira-mp-server 2>/dev/null | grep -E 'ring |aws-lc|rustls' | head -20 || true
+
       - name: Sanity check binary
         run: |
           set -euo pipefail
