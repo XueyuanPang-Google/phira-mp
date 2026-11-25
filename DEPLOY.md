@@ -55,6 +55,13 @@ iptables -I 1PANEL_BASIC 1 -p tcp -m tcp --dport 32346 -j ACCEPT
 `phira-mp-fw-guard.service` + `.timer` (installed on the host) re-assert this rule after boot and
 every 2 minutes, in case the panel regenerates its chains.
 
+The same rule must exist for **IPv6** (ip6tables). Phone clients on cellular networks prefer
+IPv6; if the v6 side drops instead of rejecting, every connection waits for a full timeout before
+falling back to IPv4 - which feels like "the server is slow".
+
+ops/phira-mp-fw-guard.sh does both families and is installed on the host as
+phira-mp-fw-guard.service + .timer (after boot and every 2 minutes).
+
 ## 3. DNS
 
 | record | value |
