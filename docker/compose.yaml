@@ -10,6 +10,8 @@ services:
     command: ["--port", "32346"]
     volumes:
       - phira-mp-logs:/app/log
+      # optional server config; delete this line to use built-in defaults
+      - ./server_config.yml:/app/server_config.yml:ro
     healthcheck:
       test: ["CMD", "/usr/local/bin/phira-mp-server", "--help"]
       interval: 60s
