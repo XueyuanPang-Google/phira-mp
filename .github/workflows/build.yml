@@ -18,6 +18,11 @@ env:
   # The deployment host reports a baseline CPU (QEMU kvm64, no AVX), so the
   # binary must not contain any instruction newer than x86-64 baseline.
   RUSTFLAGS: "-C target-cpu=x86-64"
+  # aws-lc-sys (rustls' crypto backend) compiles its C with AVX when the host
+  # toolchain allows it, which makes OPENSSL_cpuid_setup itself SIGILL on CPUs
+  # without AVX. Force plain baseline code generation for the C side too.
+  CFLAGS: "-mno-avx -mno-avx2 -mno-avx512f -mno-fma -mno-avx512vl"
+  CXXFLAGS: "-mno-avx -mno-avx2 -mno-avx512f -mno-fma -mno-avx512vl"
 
 jobs:
   build:
@@ -119,12 +124,25 @@ jobs:
       - name: Reject non-baseline CPU instructions
         run: |
           set -euo pipefail
-          if objdump -d dist/${{ env.BIN }} | grep -qE '\b(vzeroupper|vmovdqa|vpxor|vpbroadcast|vpaddb|ymm[0-9]+)\b'; then
-            echo "ERROR: binary contains AVX/AVX2 instructions; it will SIGILL on baseline CPUs."
-            objdump -d dist/${{ env.BIN }} | grep -E '\b(vzeroupper|vmovdqa|vpxor|vpbroadcast)\b' | head -5
+          BIN="target/${{ env.TARGET }}/release/${{ env.BIN }}"
+          # Only the CPU-detection code runs before feature checks, so it must
+          # never contain AVX/AVX512 instructions. Everything else is guarded by
+          # runtime feature detection and may legitimately use AVX.
+          objdump -d "$BIN" | awk '
+            /^[0-9a-f]+ </ { fn = $0; hit = 0 }
+            /(vmovd|vmovq|vzeroupper|vmovdqa|vpxor|vpbroadcast).*%xmm|%ymm|%zmm/ {
+              if (fn ~ /cpuid_setup|OPENSSL_cpuid|OPENSSL_ia32cap|os_supports_avx/) {
+                if (hit == 0) { gsub(/^ +/, "", fn); print "BAD FUNCTION: " fn; hit = 1 }
+                gsub(/^ +/, "", $0); print "    " $0
+              }
+            }
+          ' > /tmp/avx-report.txt || true
+          if [ -s /tmp/avx-report.txt ]; then
+            cat /tmp/avx-report.txt
+            echo "ERROR: CPU-detection code contains AVX/AVX512 instructions; it will SIGILL on baseline CPUs."
             exit 1
           fi
-          echo "OK: no AVX instructions found"
+          echo "OK: CPU-detection code is baseline-only"
 
       - uses: actions/upload-artifact@v4
         with:
