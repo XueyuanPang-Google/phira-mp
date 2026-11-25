@@ -54,6 +54,13 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           ls -lh dist
 
+      - name: Resolve image name
+        run: |
+          set -euo pipefail
+          image="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
+          echo "image: $image"
+
       - name: Build docker image
         run: |
           set -euo pipefail
@@ -61,16 +68,16 @@ jobs:
           docker build \
             --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
             --label "org.opencontainers.image.revision=${{ github.sha }}" \
-            -t "ghcr.io/${{ github.repository }}:latest" \
-            -t "ghcr.io/${{ github.repository }}:build-${{ github.run_number }}" \
-            -t "ghcr.io/${{ github.repository }}:sha-${GITHUB_SHA::7}" \
+            -t "${IMAGE}:latest" \
+            -t "${IMAGE}:build-${{ github.run_number }}" \
+            -t "${IMAGE}:sha-${GITHUB_SHA::7}" \
             docker
 
       - name: Push docker image to GHCR
         run: |
           set -euo pipefail
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker push --all-tags "ghcr.io/${{ github.repository }}"
+          docker push --all-tags "${IMAGE}"
 
       - name: Sanity check binary
         run: |

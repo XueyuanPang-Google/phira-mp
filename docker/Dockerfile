@@ -9,8 +9,8 @@ RUN apk add --no-cache ca-certificates tzdata \
 
 COPY phira-mp-server /usr/local/bin/phira-mp-server
 RUN chmod 0755 /usr/local/bin/phira-mp-server \
- && mkdir -p /app \
- && chown phira:phira /app
+ && mkdir -p /app/log \
+ && chown -R phira:phira /app
 
 WORKDIR /app
 USER phira

@@ -1,0 +1,26 @@
+services:
+  phira-mp:
+    image: ghcr.io/xueyuanpang-google/phira-mp:latest
+    container_name: phira-mp
+    restart: unless-stopped
+    ports:
+      - "32346:32346"
+    environment:
+      RUST_LOG: info
+    command: ["--port", "32346"]
+    volumes:
+      - phira-mp-logs:/app/log
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/phira-mp-server", "--help"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  phira-mp-logs:
