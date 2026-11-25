@@ -3,8 +3,9 @@ services:
     image: ghcr.io/xueyuanpang-google/phira-mp:latest
     container_name: phira-mp
     restart: unless-stopped
-    ports:
-      - "32346:32346"
+    # Host networking: the game speaks raw TCP with a 3s heartbeat, so every
+    # extra hop (docker bridge NAT + userland docker-proxy) shows up as jitter.
+    network_mode: host
     environment:
       RUST_LOG: info
     command: ["--port", "32346"]
@@ -12,6 +13,8 @@ services:
       - phira-mp-logs:/app/log
       # optional server config; delete this line to use built-in defaults
       - ./server_config.yml:/app/server_config.yml:ro
+    # keep the (tiny) process resident instead of letting it be swapped out
+    mem_swappiness: 0
     healthcheck:
       test: ["CMD", "/usr/local/bin/phira-mp-server", "--help"]
       interval: 60s
